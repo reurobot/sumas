@@ -1,0 +1,328 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title id="site-title">SUMAS Sistema de Agenda Pro</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root { --primary: #2563eb; --bg-light: #f8fafc; --card-light: #ffffff; }
+        body { margin: 0; background-color: var(--bg-light); font-family: 'Inter', sans-serif; color: #1e293b; -webkit-tap-highlight-color: transparent; }
+        .card-white { background: var(--card-light); border: 1px solid #e2e8f0; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        
+        /* CALENDARIO MENSUAL */
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+        .calendar-day-header { text-align: center; font-size: 10px; font-weight: 800; color: #94a3b8; padding: 5px 0; text-transform: uppercase; }
+        .calendar-day { 
+            background: white; border: 1px solid #f1f5f9; min-height: 85px; padding: 5px; 
+            border-radius: 12px; transition: 0.2s; cursor: pointer; position: relative;
+        }
+        .calendar-day:hover { background: #f8fafc; border-color: var(--primary); }
+        .calendar-day.today { border: 2px solid var(--primary); }
+        .calendar-day.empty { background: #f1f5f9; cursor: default; }
+        .day-number { font-weight: 800; font-size: 12px; color: #64748b; }
+        .event-badge { background: var(--primary); color: white; font-size: 8px; padding: 2px 4px; border-radius: 4px; margin-top: 2px; font-weight: bold; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+        /* DISEÑO DE CUADRÍCULA DE HORAS (UNIFICADO CLIENTE/ADMIN) */
+        .time-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+        .time-btn { 
+            background: #f1f5f9; border: 1px solid #e2e8f0; color: #64748b; 
+            padding: 14px 10px; border-radius: 14px; font-weight: 700; text-align: center; 
+            cursor: pointer; font-size: 13px; transition: 0.3s;
+        }
+        .time-btn:hover:not(.occupied) { border-color: var(--primary); color: var(--primary); background: #eff6ff; }
+        .time-btn.selected { background: var(--primary) !important; color: white !important; border-color: var(--primary) !important; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3); }
+        .time-btn.occupied { opacity: 0.2; text-decoration: line-through; cursor: not-allowed; background: #e2e8f0; border-color: transparent; }
+        
+        .btn-main { background: var(--primary); color: white; font-weight: 800; padding: 18px; border-radius: 18px; width: 100%; transition: 0.3s; text-transform: uppercase; cursor: pointer; border: none; font-size: 14px; letter-spacing: 0.5px; }
+        .btn-main:active { transform: scale(0.98); }
+        .tab-active { color: var(--primary) !important; border-bottom: 3px solid var(--primary) !important; font-weight: 800; }
+        
+        input, select { background: #ffffff; border: 1px solid #cbd5e1; color: #1e293b; padding: 14px; border-radius: 14px; width: 100%; outline: none; font-size: 16px; transition: 0.2s; }
+        input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1); }
+
+        .modal { display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+        .modal.open { display: flex; }
+        .hidden { display: none !important; }
+        .brand-logo { max-height: 60px; width: auto; object-fit: contain; }
+    </style>
+</head>
+<body>
+    <div class="main-overlay">
+
+        <section id="view-login" class="flex items-center justify-center min-h-screen p-6">
+            <div class="card-white p-10 w-full max-w-sm text-center">
+                <img id="login-logo" src="logo.png" class="brand-logo mx-auto mb-6">
+                <h1 id="login-name" class="text-2xl font-black mb-8 uppercase tracking-tighter text-slate-900 border-b pb-4"></h1>
+                <div class="space-y-4">
+                    <button onclick="toggleAdminAuth()" class="w-full btn-main shadow-xl">Panel Administrador</button>
+                    <button onclick="showView('view-client')" class="w-full bg-slate-100 text-slate-700 font-extrabold py-5 rounded-2xl transition hover:bg-slate-200">Agendar Cita</button>
+                </div>
+                <div id="admin-auth-box" class="hidden mt-8 pt-8 border-t border-slate-100">
+                    <input type="password" id="admin-pass" placeholder="Ingresa Clave" class="mb-4 text-center">
+                    <button onclick="processAdminLogin()" class="w-full bg-slate-900 text-white py-4 rounded-xl font-bold uppercase text-xs">Entrar</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-admin" class="hidden max-w-7xl mx-auto p-4 md:p-8">
+            <header class="flex justify-between items-center mb-8">
+                <div class="flex items-center gap-4">
+                    <img id="admin-logo" src="logo.png" class="brand-logo" style="max-height: 45px;">
+                    <h2 id="admin-view-name" class="text-xl font-black uppercase text-slate-900"></h2>
+                </div>
+                <button onclick="location.reload()" class="h-11 w-11 bg-white border border-slate-200 rounded-xl text-slate-400 flex items-center justify-center transition hover:text-red-500"><i class="fas fa-power-off"></i></button>
+            </header>
+
+            <nav class="flex gap-4 mb-8 border-b border-slate-200 text-[10px] font-black uppercase overflow-x-auto whitespace-nowrap pb-1">
+                <button onclick="switchAdminTab('calendar')" id="tab-calendar" class="pb-4 tab-active">Calendario</button>
+                <button onclick="switchAdminTab('agenda')" id="tab-agenda" class="pb-4 text-slate-400">Reservas</button>
+                <button onclick="switchAdminTab('history')" id="tab-history" class="pb-4 text-slate-400">Historial</button>
+                <button onclick="switchAdminTab('dashboard')" id="tab-dashboard" class="pb-4 text-slate-400">Métricas</button>
+                <button onclick="switchAdminTab('config')" id="tab-config" class="pb-4 text-slate-400">Ajustes</button>
+            </nav>
+
+            <div id="admin-calendar">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 id="current-month-label" class="text-lg font-black uppercase italic text-slate-800 tracking-tighter"></h3>
+                    <div class="flex gap-2">
+                        <button onclick="changeMonth(-1)" class="p-2.5 bg-white border rounded-xl shadow-sm"><i class="fas fa-chevron-left"></i></button>
+                        <button onclick="changeMonth(1)" class="p-2.5 bg-white border rounded-xl shadow-sm"><i class="fas fa-chevron-right"></i></button>
+                    </div>
+                </div>
+                <div class="calendar-grid" id="calendar-grid-root"></div>
+            </div>
+
+            <div id="admin-agenda" class="hidden space-y-4">
+                <button onclick="openModal('appointmentModal')" class="bg-blue-600 text-white text-[10px] px-5 py-3 rounded-2xl font-black uppercase shadow-lg w-full mb-4">+ Nueva Cita Manual</button>
+                <div id="agenda-list" class="grid gap-4"></div>
+            </div>
+
+            <div id="admin-history" class="hidden">
+                <div class="card-white overflow-hidden">
+                    <div class="p-6 border-b flex justify-between items-center bg-blue-50">
+                        <span class="text-[10px] font-black uppercase text-blue-400 tracking-widest">Balance de Caja</span>
+                        <span id="total-revenue" class="font-black text-blue-600 text-2xl tracking-tighter">$ 0</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm"><tbody id="history-list-body" class="divide-y"></tbody></table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="admin-dashboard" class="hidden space-y-6">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="card-white p-6"><h4 class="text-[10px] font-black text-slate-400 uppercase mb-4">Evolución de Ingresos</h4><canvas id="chartEarnings"></canvas></div>
+                    <div class="card-white p-6"><h4 class="text-[10px] font-black text-slate-400 uppercase mb-4">Reparto de Productividad</h4><canvas id="chartBarbers"></canvas></div>
+                </div>
+            </div>
+
+            <div id="admin-config" class="hidden grid md:grid-cols-2 gap-8">
+                <div class="card-white p-6">
+                    <h3 class="font-bold mb-6 uppercase text-xs border-b pb-2">Servicios y Costos</h3>
+                    <div class="space-y-3 mb-6">
+                        <input type="text" id="new-service-name" placeholder="Nombre Servicio">
+                        <input type="number" id="new-service-price" placeholder="Precio ($)">
+                        <button onclick="addService()" class="btn-main text-[10px] h-12">Crear Servicio</button>
+                    </div>
+                    <div id="list-services" class="space-y-2"></div>
+                </div>
+                <div class="card-white p-6">
+                    <h3 class="font-bold mb-6 uppercase text-xs border-b pb-2 text-blue-600">Gestión de Personal</h3>
+                    <div class="space-y-3 mb-6">
+                        <input type="text" id="new-barber" placeholder="Nombre">
+                        <input type="tel" id="new-barber-phone" value="57" placeholder="WhatsApp">
+                        <button onclick="addStaff()" class="btn-main text-[10px] h-12">Anexar Staff</button>
+                    </div>
+                    <div id="list-barbers" class="space-y-2 mb-6"></div>
+                    <div class="pt-6 border-t"><input type="password" id="cfg-admin-pass" placeholder="Nueva Clave Admin"><button onclick="saveBrandConfig()" class="btn-main mt-4 text-[10px] h-11 bg-slate-800">Actualizar</button></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-client" class="hidden flex items-center justify-center min-h-screen p-4">
+            <div class="card-white p-8 w-full max-w-md">
+                <div class="flex justify-between items-center mb-8 border-b border-slate-50 pb-4">
+                    <button onclick="showView('view-login')" class="text-slate-400 text-[10px] font-black uppercase">← Volver</button>
+                    <img id="client-logo" src="logo.png" class="brand-logo" style="max-height: 35px;">
+                </div>
+                <form id="reserva-form" class="space-y-4">
+                    <input type="text" id="res-name" placeholder="Escribe tu nombre" required>
+                    <input type="tel" id="res-phone" placeholder="WhatsApp (Ej: 310...)" required>
+                    <div class="grid grid-cols-1 gap-3">
+                        <select id="res-service-select" onchange="generateGrid('res')"></select>
+                        <select id="res-barber-select" onchange="generateGrid('res')"></select>
+                    </div>
+                    <div><label class="text-[10px] font-black text-slate-400 uppercase ml-1">Fecha</label><input type="date" id="res-date" onchange="generateGrid('res')" required></div>
+                    <div><label class="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-widest">Selecciona Horario</label><div id="res-time-slots" class="time-grid"></div><input type="hidden" id="res-time-hidden" required></div>
+                    <button type="submit" class="btn-main shadow-xl shadow-blue-50 mt-4">Confirmar Turno</button>
+                </form>
+            </div>
+        </section>
+    </div>
+
+    <div id="dayDetailModal" class="modal"><div class="card-white p-6 w-full max-w-sm"><h3 id="modal-date-title" class="font-black uppercase mb-4 text-center text-blue-600"></h3><div id="day-events-list" class="space-y-3"></div><button onclick="closeModal('dayDetailModal')" class="w-full text-xs text-slate-400 mt-6 font-bold uppercase">Cerrar</button></div></div>
+
+    <div id="appointmentModal" class="modal">
+        <div class="card-white p-8 w-full max-w-md mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h2 class="text-xl font-black mb-6 text-center italic uppercase tracking-widest">Cita Manual</h2>
+            <div class="space-y-4">
+                <input type="text" id="app-name" placeholder="Nombre del cliente">
+                <div class="grid grid-cols-2 gap-2"><select id="app-service-select" onchange="syncPrice(); generateGrid('app')"></select><select id="app-barber-select" onchange="generateGrid('app')"></select></div>
+                <input type="date" id="app-date" onchange="generateGrid('app')">
+                <div><label class="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Cuadrícula de Horas</label><div id="app-time-slots" class="time-grid"></div><input type="hidden" id="app-time-hidden"></div>
+                <div class="bg-slate-50 p-4 rounded-xl border flex justify-between items-center"><span class="text-[10px] font-black uppercase text-slate-400">Total:</span><input type="number" id="app-price" class="font-black text-blue-600 border-none bg-transparent text-right w-24 text-lg p-0"></div>
+                <button onclick="saveManualAppointment()" class="btn-main">Guardar en Agenda</button>
+                <button onclick="closeModal('appointmentModal')" class="w-full text-xs text-slate-400 mt-2 uppercase font-black py-2">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- BASE DE DATOS LOCAL ---
+        let brand = JSON.parse(localStorage.getItem('bf_brand_v7')) || { name: "SUMAS SISTEMA PRO", logo: "logo.png", color: "#2563eb", pass: "1234" };
+        let barbers = JSON.parse(localStorage.getItem('bf_staff_v7')) || [{name: "Ricardo Staff", phone: "573000000000"}];
+        let services = JSON.parse(localStorage.getItem('bf_services_v7')) || [{name: "Corte Tradicional", price: 20000}];
+        let appointments = JSON.parse(localStorage.getItem('bf_agenda_v7')) || [];
+        let history = JSON.parse(localStorage.getItem('bf_history_v7')) || [];
+        
+        let currentMonth = new Date().getMonth();
+        let currentYear = new Date().getFullYear();
+        let eChart = null, bChart = null;
+
+        const baseHours = ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00"];
+        const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+        function applyBrand() {
+            document.documentElement.style.setProperty('--primary', brand.color);
+            document.getElementById('login-name').innerText = brand.name;
+            document.getElementById('admin-view-name').innerText = brand.name;
+            ['login-logo', 'admin-logo', 'client-logo'].forEach(id => document.getElementById(id).src = brand.logo);
+        }
+
+        // --- GRID DE TIEMPO (UNIFICADO) ---
+        function generateGrid(prefix) {
+            const grid = document.getElementById(`${prefix}-time-slots`);
+            const date = document.getElementById(`${prefix}-date`).value;
+            const barber = document.getElementById(`${prefix}-barber-select`).value;
+            const hidden = document.getElementById(`${prefix}-time-hidden`);
+            grid.innerHTML = ''; hidden.value = '';
+            baseHours.forEach(h => {
+                const occupied = appointments.find(a => a.date === date && a.time === h && a.barber === barber);
+                const btn = document.createElement('div');
+                btn.innerText = h;
+                btn.className = `time-btn ${occupied ? 'occupied' : ''}`;
+                if (!occupied) btn.onclick = () => {
+                    grid.querySelectorAll('.time-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    hidden.value = h;
+                };
+                grid.appendChild(btn);
+            });
+        }
+
+        // --- CALENDARIO MENSUAL ---
+        function renderCalendar() {
+            const root = document.getElementById('calendar-grid-root');
+            document.getElementById('current-month-label').innerText = `${meses[currentMonth]} ${currentYear}`;
+            root.innerHTML = '';
+            ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"].forEach(d => root.innerHTML += `<div class="calendar-day-header">${d}</div>`);
+            const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+            for(let i = 0; i < startOffset; i++) root.innerHTML += `<div class="calendar-day empty"></div>`;
+            for(let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const dayApps = appointments.filter(a => a.date === dateStr);
+                const isToday = new Date().toISOString().split('T')[0] === dateStr;
+                let html = `<div class="calendar-day ${isToday ? 'today' : ''}" onclick="showDayDetail('${dateStr}')"><span class="day-number">${d}</span>`;
+                dayApps.slice(0, 2).forEach(a => html += `<div class="event-badge">${a.time} ${a.name}</div>`);
+                if(dayApps.length > 2) html += `<div class="text-[8px] font-black text-slate-400 mt-1 uppercase">+${dayApps.length - 2}</div>`;
+                html += `</div>`; root.innerHTML += html;
+            }
+        }
+
+        function showDayDetail(date) {
+            const dayApps = appointments.filter(a => a.date === date);
+            document.getElementById('modal-date-title').innerText = date;
+            const list = document.getElementById('day-events-list');
+            list.innerHTML = dayApps.length === 0 ? '<p class="text-center py-4 opacity-30 font-black">VACÍO</p>' : '';
+            dayApps.forEach(a => { list.innerHTML += `<div class="bg-slate-50 p-4 rounded-xl border-l-4 border-blue-600"><p class="font-black text-xs uppercase tracking-tighter">${a.time} — ${a.name}</p><p class="text-[9px] text-blue-600 font-bold tracking-widest">${a.service} con ${a.barber}</p></div>`; });
+            document.getElementById('dayDetailModal').classList.add('open');
+        }
+
+        // --- DASHBOARD & HISTORIAL ---
+        function initCharts() {
+            if (history.length === 0) return;
+            if (eChart) eChart.destroy(); if (bChart) bChart.destroy();
+            const daily = {}; history.forEach(h => { daily[h.date] = (daily[h.date] || 0) + h.price; });
+            const stf = {}; history.forEach(h => { stf[h.barber || 'Gral'] = (stf[h.barber || 'Gral'] || 0) + h.price; });
+            eChart = new Chart(document.getElementById('chartEarnings'), { type: 'line', data: { labels: Object.keys(daily), datasets: [{ label: 'Ventas', data: Object.values(daily), borderColor: brand.color, tension: 0.4 }] } });
+            bChart = new Chart(document.getElementById('chartBarbers'), { type: 'doughnut', data: { labels: Object.keys(stf), datasets: [{ data: Object.values(stf), backgroundColor: [brand.color, '#10b981', '#f59e0b', '#ef4444'] }] } });
+        }
+
+        function drawHistory() {
+            const tbody = document.getElementById('history-list-body');
+            tbody.innerHTML = history.length === 0 ? '<tr><td class="p-10 text-center opacity-20 uppercase font-black">Sin registros</td></tr>' : '';
+            history.forEach(h => { tbody.innerHTML += `<tr><td class="p-4 text-[10px] font-bold text-slate-400">${h.date}</td><td class="p-4 font-black uppercase text-xs">${h.name}</td><td class="p-4 text-right font-black text-green-600 tracking-tighter">$${h.price.toLocaleString()}</td></tr>`; });
+            document.getElementById('total-revenue').innerText = "$ " + history.reduce((a, b) => a + b.price, 0).toLocaleString();
+        }
+
+        // --- CORE NAVIGATION ---
+        function showView(v) { document.querySelectorAll('section').forEach(s => s.classList.add('hidden')); document.getElementById(v).classList.remove('hidden'); if(v === 'view-admin') switchAdminTab('calendar'); if(v === 'view-client') { populateSelectors(); document.getElementById('res-date').value = new Date().toISOString().split('T')[0]; generateGrid('res'); } }
+        function switchAdminTab(t) { ['admin-calendar', 'admin-agenda', 'admin-history', 'admin-dashboard', 'admin-config'].forEach(id => document.getElementById(id).classList.add('hidden')); document.getElementById('admin-' + t).classList.remove('hidden'); document.querySelectorAll('nav button').forEach(b => b.classList.remove('tab-active')); document.getElementById('tab-' + t).classList.add('tab-active'); if(t === 'calendar') renderCalendar(); if(t === 'agenda') drawAgenda(); if(t === 'history') drawHistory(); if(t === 'dashboard') initCharts(); if(t === 'config') drawConfig(); }
+        
+        function drawAgenda() {
+            const list = document.getElementById('agenda-list');
+            list.innerHTML = appointments.length === 0 ? '<p class="text-center py-20 opacity-30 font-black uppercase text-xs">Agenda Vacía</p>' : '';
+            appointments.sort((a,b) => a.date.localeCompare(b.date)).forEach(a => {
+                list.innerHTML += `<div class="card-white p-5 flex justify-between items-center border-l-4 border-blue-600"><div><span class="text-[9px] font-bold text-slate-400 tracking-tighter">${a.date} | ${a.time}</span><h4 class="font-black text-sm uppercase text-slate-800">${a.name}</h4><p class="text-[10px] uppercase font-black text-blue-600">${a.service}</p></div><div class="flex gap-1"><button onclick="cobrar(${a.id})" class="bg-blue-600 text-white text-[8px] px-4 py-2 rounded-xl font-bold">COBRAR</button><button onclick="appointments=appointments.filter(x=>x.id!==${a.id});saveData();drawAgenda();" class="bg-red-50 text-red-500 text-[8px] px-4 py-2 rounded-xl font-bold">X</button></div></div>`;
+            });
+        }
+
+        function drawConfig() {
+            document.getElementById('list-services').innerHTML = services.map((s, i) => `<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl border"><input type="text" value="${s.name}" onchange="services[${i}].name=this.value;saveData()" class="text-xs font-bold bg-transparent uppercase"><input type="number" value="${s.price}" onchange="services[${i}].price=parseFloat(this.value);saveData()" class="text-xs w-20 bg-transparent font-black text-blue-600 text-right"><button onclick="services.splice(${i},1);saveData();drawConfig()" class="text-red-500">X</button></div>`).join('');
+            document.getElementById('list-barbers').innerHTML = barbers.map((b, i) => `<div class="flex justify-between p-3 bg-slate-50 rounded-xl text-xs font-bold uppercase"><span>${b.name}</span><button onclick="barbers.splice(${i},1);saveData();drawConfig()" class="text-red-500">X</button></div>`).join('');
+        }
+
+        // --- AUX FUNCTIONS ---
+        function cobrar(id) { const a = appointments.find(x => x.id === id); const price = services.find(s => s.name === a.service)?.price || 0; history.unshift({ ...a, price: price }); appointments = appointments.filter(x => x.id !== id); saveData(); drawAgenda(); }
+        function saveData() { localStorage.setItem('bf_agenda_v7', JSON.stringify(appointments)); localStorage.setItem('bf_services_v7', JSON.stringify(services)); localStorage.setItem('bf_brand_v7', JSON.stringify(brand)); localStorage.setItem('bf_history_v7', JSON.stringify(history)); localStorage.setItem('bf_staff_v7', JSON.stringify(barbers)); }
+        function processAdminLogin() { if(document.getElementById('admin-pass').value === brand.pass) showView('view-admin'); else alert("Acceso Incorrecto"); }
+        function toggleAdminAuth() { document.getElementById('admin-auth-box').classList.toggle('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+        function syncPrice() { const s = document.getElementById('app-service-select'); document.getElementById('app-price').value = services.find(x => x.name === s.value)?.price || 0; }
+        function changeMonth(d) { currentMonth += d; if(currentMonth>11){currentMonth=0;currentYear++}if(currentMonth<0){currentMonth=11;currentYear--} renderCalendar(); }
+        function populateSelectors() { const sHtml = services.map(x => `<option value="${x.name}">${x.name}</option>`).join(''); const bHtml = barbers.map(x => `<option value="${x.name}">${x.name}</option>`).join(''); document.getElementById('res-service-select').innerHTML = sHtml; document.getElementById('res-barber-select').innerHTML = bHtml; document.getElementById('app-service-select').innerHTML = sHtml; document.getElementById('app-barber-select').innerHTML = bHtml; }
+        function openModal(id) { populateSelectors(); document.getElementById('app-date').value = new Date().toISOString().split('T')[0]; syncPrice(); generateGrid('app'); document.getElementById(id).classList.add('open'); }
+        function addService() { const n = document.getElementById('new-service-name').value; const p = document.getElementById('new-service-price').value; if(n && p) { services.push({name: n, price: parseFloat(p)}); saveData(); drawConfig(); } }
+        function addStaff() { const n = document.getElementById('new-barber').value; const p = document.getElementById('new-barber-phone').value; if(n && p) { barbers.push({name: n, phone: p}); saveData(); drawConfig(); } }
+        function saveBrandConfig() { const p = document.getElementById('cfg-admin-pass').value; if(p) brand.pass = p; saveData(); alert("Guardado"); }
+
+        function saveManualAppointment() {
+            const t = document.getElementById('app-time-hidden').value;
+            if(!t) return alert("Selecciona hora");
+            appointments.push({ id: Date.now(), name: document.getElementById('app-name').value, date: document.getElementById('app-date').value, time: t, barber: document.getElementById('app-barber-select').value, service: document.getElementById('app-service-select').value });
+            saveData(); drawAgenda(); closeModal('appointmentModal');
+        }
+
+        document.getElementById('reserva-form').onsubmit = (e) => {
+            e.preventDefault();
+            const data = { id: Date.now(), name: document.getElementById('res-name').value, date: document.getElementById('res-date').value, time: document.getElementById('res-time-hidden').value, service: document.getElementById('res-service-select').value, barber: document.getElementById('res-barber-select').value };
+            if(!data.time) return alert("Selecciona una hora en la cuadrícula");
+            appointments.push(data); saveData();
+            const b = barbers.find(x => x.name === data.barber);
+            const texto = `💈 *CITA SUMAS* 💈\n👤 *Cliente:* ${data.name}\n✂️ *Servicio:* ${data.service}\n📅 *Fecha:* ${data.date}\n⏰ *Hora:* ${data.time}`;
+            window.open(`https://wa.me/${b.phone.replace(/\D/g,'')}?text=${encodeURIComponent(texto)}`, '_blank');
+            location.reload();
+        };
+
+        applyBrand();
+        showView('view-login');
+    </script>
+</body>
+</html>
